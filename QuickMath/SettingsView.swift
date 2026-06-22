@@ -9,10 +9,6 @@ struct SettingsView: View {
     @State private var showPaywall = false
     @State private var showDeleteConfirm = false
 
-    private var theme: AppTheme {
-        get { AppTheme(rawValue: themeRaw) ?? .system }
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
