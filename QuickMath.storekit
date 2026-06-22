@@ -1,0 +1,53 @@
+{
+  "appPolicies": {
+    "eula": "",
+    "policies": [
+      {
+        "locale": "en_US",
+        "policyText": "",
+        "policyURL": ""
+      }
+    ]
+  },
+  "identifier": "LATTICE_STOREKIT_CONFIG",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_failTransactionsEnabled": false,
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "tideline_pro_group",
+      "localizations": [],
+      "name": "Tideline Pro",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "0.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "tideline_pro_monthly_id",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited history, dual-wave comparison & daily insights.",
+              "displayName": "Tideline Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "tideline_pro_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Tideline Pro Monthly",
+          "subscriptionGroupID": "tideline_pro_group",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}
