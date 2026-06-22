@@ -93,11 +93,11 @@ struct InsightsView: View {
                 )
                 .foregroundStyle(Color.qmAccent)
 
-                RuleMark(
+                PointMark(
                     x: .value("Envelope", bar.name),
                     y: .value("Budget", bar.budget)
                 )
-                .lineStyle(StrokeStyle(lineWidth: 2, dash: [4]))
+                .symbolSize(40)
                 .foregroundStyle(Color.qmHair)
             }
             .frame(height: 180)
