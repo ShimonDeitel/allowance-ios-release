@@ -1,107 +1,116 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: Store
     @EnvironmentObject var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
 
     @AppStorage("quickmath.theme") private var themeRaw = AppTheme.system.rawValue
-
     @State private var showPaywall = false
     @State private var showDeleteConfirm = false
 
-    private var theme: Binding<AppTheme> {
-        Binding(
-            get: { AppTheme(rawValue: themeRaw) ?? .system },
-            set: { themeRaw = $0.rawValue }
-        )
+    private var theme: AppTheme {
+        get { AppTheme(rawValue: themeRaw) ?? .system }
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 QMBackground()
-
                 List {
                     // Pro section
                     Section("Subscription") {
                         if store.isPro {
                             HStack {
-                                Text("Tideline Pro")
-                                Spacer()
-                                Text("Active")
+                                Image(systemName: "checkmark.seal.fill")
                                     .foregroundStyle(Color.qmCorrect)
-                                    .font(.subheadline.weight(.medium))
+                                Text("Allowance Pro — Active")
+                                    .foregroundStyle(.primary)
                             }
-                            Link("Manage Subscription",
-                                 destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
-                                .foregroundStyle(Color.qmAccent)
+                            Button("Manage Subscription") {
+                                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .foregroundStyle(Color.qmAccent)
                         } else {
-                            Button("Unlock Tideline Pro") {
+                            Button {
                                 showPaywall = true
+                                Haptics.tap()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "star.fill")
+                                        .foregroundStyle(Color.qmAccent)
+                                    Text("Unlock Allowance Pro")
+                                        .foregroundStyle(Color.qmAccent)
+                                }
+                            }
+                            Button("Restore Purchase") {
+                                Haptics.tap()
+                                Task { await store.restore() }
                             }
                             .foregroundStyle(Color.qmAccent)
                         }
-
-                        Button("Restore Purchase") {
-                            Task { await store.restore() }
-                        }
-                        .foregroundStyle(Color.qmAccent)
                     }
 
                     // Appearance
                     Section("Appearance") {
-                        Picker("Theme", selection: theme) {
+                        Picker("Theme", selection: $themeRaw) {
                             ForEach(AppTheme.allCases) { t in
-                                Text(t.label).tag(t)
+                                Text(t.label).tag(t.rawValue)
                             }
                         }
                         .pickerStyle(.segmented)
                     }
 
-                    // Legal
+                    // Links
                     Section("Legal") {
-                        Link("Privacy Policy",
-                             destination: URL(string: "https://shimondeitel.github.io/tideline-site/privacy.html")!)
-                            .foregroundStyle(Color.qmAccent)
-                        Link("Terms of Use",
-                             destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-                            .foregroundStyle(Color.qmAccent)
+                        Button("Privacy Policy") {
+                            if let url = URL(string: "https://shimondeitel.github.io/allowance-site/privacy.html") {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .foregroundStyle(Color.qmAccent)
+
+                        Button("Terms of Service") {
+                            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .foregroundStyle(Color.qmAccent)
                     }
 
                     // Data
                     Section("Data") {
-                        Button("Delete All Data") {
+                        Button("Delete All Data", role: .destructive) {
                             showDeleteConfirm = true
                         }
-                        .foregroundStyle(Color.qmWrong)
                     }
                 }
                 .scrollContentBackground(.hidden)
+                .background(Color.clear)
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
+                        .foregroundStyle(Color.qmAccent)
                 }
             }
-            .sheet(isPresented: $showPaywall) {
-                PaywallView()
-                    .environmentObject(store)
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(store)
+        }
+        .alert("Delete All Data?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                appModel.deleteAllData()
+                Haptics.warning()
             }
-            .confirmationDialog(
-                "Delete all Tideline data?",
-                isPresented: $showDeleteConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Delete All", role: .destructive) {
-                    appModel.deleteAllData()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This removes all your logged energy entries and cannot be undone.")
-            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete all envelopes and spends.")
         }
     }
 }

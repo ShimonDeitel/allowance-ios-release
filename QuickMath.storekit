@@ -18,9 +18,9 @@
   },
   "subscriptionGroups": [
     {
-      "id": "tideline_pro_group",
+      "id": "allowance_pro_group",
       "localizations": [],
-      "name": "Tideline Pro",
+      "name": "Allowance Pro",
       "subscriptions": [
         {
           "adHocOffers": [],
@@ -28,19 +28,19 @@
           "displayPrice": "0.99",
           "familyShareable": false,
           "groupNumber": 1,
-          "internalID": "tideline_pro_monthly_id",
+          "internalID": "allowance_pro_monthly_id",
           "introductoryOffer": null,
           "localizations": [
             {
-              "description": "Unlimited history, dual-wave comparison & daily insights.",
-              "displayName": "Tideline Pro",
+              "description": "Rollover, history, alerts & CSV export",
+              "displayName": "Allowance Pro",
               "locale": "en_US"
             }
           ],
-          "productID": "tideline_pro_monthly",
+          "productID": "allowance_pro_monthly",
           "recurringSubscriptionPeriod": "P1M",
-          "referenceName": "Tideline Pro Monthly",
-          "subscriptionGroupID": "tideline_pro_group",
+          "referenceName": "Allowance Pro Monthly",
+          "subscriptionGroupID": "allowance_pro_group",
           "type": "RecurringSubscription"
         }
       ]

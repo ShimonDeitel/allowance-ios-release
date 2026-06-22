@@ -1,48 +1,78 @@
-import Foundation
+import SwiftUI
 import SwiftData
 
 // MARK: - SwiftData models
 
 @Model
-final class WaveEntry {
+final class Envelope {
     var id: UUID
-    var date: Date
-    var level: Int
-    var partOfDay: String
-    var tag: String?
+    var name: String
+    var allocation: Double
+    var cadence: CadenceType
+    var periodStart: Date
+    var colorTag: String
 
-    init(id: UUID = UUID(), date: Date = .now, level: Int, partOfDay: String = "day", tag: String? = nil) {
+    init(id: UUID = UUID(), name: String, allocation: Double,
+         cadence: CadenceType = .monthly, periodStart: Date = Date(), colorTag: String = "blue") {
         self.id = id
-        self.date = date
-        self.level = level
-        self.partOfDay = partOfDay
-        self.tag = tag
+        self.name = name
+        self.allocation = allocation
+        self.cadence = cadence
+        self.periodStart = periodStart
+        self.colorTag = colorTag
     }
 }
 
 @Model
-final class TrendCache {
+final class SpendEntry {
     var id: UUID
-    var weekStart: Date
-    var average: Double
+    var envelopeID: UUID
+    var amount: Double
+    var note: String
+    var date: Date
 
-    init(id: UUID = UUID(), weekStart: Date, average: Double) {
+    init(id: UUID = UUID(), envelopeID: UUID, amount: Double, note: String = "", date: Date = Date()) {
         self.id = id
-        self.weekStart = weekStart
-        self.average = average
+        self.envelopeID = envelopeID
+        self.amount = amount
+        self.note = note
+        self.date = date
     }
 }
 
-// MARK: - AppModel
+@Model
+final class BudgetPeriod {
+    var id: UUID
+    var startDate: Date
+    var endDate: Date
+    var isClosed: Bool
+
+    init(id: UUID = UUID(), startDate: Date, endDate: Date, isClosed: Bool = false) {
+        self.id = id
+        self.startDate = startDate
+        self.endDate = endDate
+        self.isClosed = isClosed
+    }
+}
+
+// MARK: - Cadence enum
+
+enum CadenceType: String, Codable, CaseIterable {
+    case weekly = "weekly"
+    case monthly = "monthly"
+
+    var label: String { rawValue.capitalized }
+}
+
+// MARK: - App model
 
 @MainActor
 final class AppModel: ObservableObject {
     let container: ModelContainer
     weak var store: Store?
 
-    @Published private(set) var recentEntries: [WaveEntry] = []
-    @Published private(set) var todayEntry: WaveEntry? = nil
-    @Published private(set) var allEntries: [WaveEntry] = []
+    @Published private(set) var envelopes: [Envelope] = []
+    @Published private(set) var spends: [SpendEntry] = []
 
     init(container: ModelContainer) {
         self.container = container
@@ -50,79 +80,189 @@ final class AppModel: ObservableObject {
     }
 
     static func makeContainer() -> ModelContainer {
-        let schema = Schema([WaveEntry.self, TrendCache.self])
+        let schema = Schema([Envelope.self, SpendEntry.self, BudgetPeriod.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
             let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: schema, configurations: [fallback])
+            return (try? ModelContainer(for: schema, configurations: [fallback]))!
         }
     }
 
     func reload() {
         let ctx = container.mainContext
-        let descriptor = FetchDescriptor<WaveEntry>(sortBy: [SortDescriptor(\.date, order: .reverse)])
-        let fetched = (try? ctx.fetch(descriptor)) ?? []
-        allEntries = fetched
-        recentEntries = Array(fetched.prefix(7))
-        todayEntry = fetched.first(where: { Calendar.current.isDateInToday($0.date) })
+        envelopes = (try? ctx.fetch(FetchDescriptor<Envelope>(sortBy: [SortDescriptor(\.name)]))) ?? []
+        spends = (try? ctx.fetch(FetchDescriptor<SpendEntry>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? []
     }
 
     func refresh() { reload() }
 
-    // MARK: Log energy level
-    func logEnergy(level: Int, partOfDay: String = "day", tag: String? = nil) {
-        let ctx = container.mainContext
-        // Replace existing today entry if same partOfDay
-        if let existing = allEntries.first(where: {
-            Calendar.current.isDateInToday($0.date) && $0.partOfDay == partOfDay
-        }) {
-            existing.level = level
-            existing.tag = tag
-        } else {
-            let entry = WaveEntry(level: level, partOfDay: partOfDay, tag: tag)
-            ctx.insert(entry)
-        }
-        try? ctx.save()
+    // MARK: - Envelope CRUD
+
+    func addEnvelope(name: String, allocation: Double, cadence: CadenceType, colorTag: String) {
+        let e = Envelope(name: name, allocation: allocation, cadence: cadence,
+                         periodStart: periodStart(cadence: cadence), colorTag: colorTag)
+        container.mainContext.insert(e)
+        try? container.mainContext.save()
         reload()
     }
 
-    // MARK: 7-day rolling average
-    var sevenDayAverage: Double {
-        let relevant = recentEntries.prefix(7)
-        guard !relevant.isEmpty else { return 0 }
-        return Double(relevant.map(\.level).reduce(0, +)) / Double(relevant.count)
+    func updateEnvelope(_ envelope: Envelope, name: String, allocation: Double,
+                        cadence: CadenceType, colorTag: String) {
+        envelope.name = name
+        envelope.allocation = allocation
+        envelope.cadence = cadence
+        envelope.colorTag = colorTag
+        try? container.mainContext.save()
+        reload()
     }
 
-    // MARK: Best time of day (pro)
-    var bestTimeOfDay: String {
-        let mornings = allEntries.filter { $0.partOfDay == "morning" }
-        let evenings = allEntries.filter { $0.partOfDay == "evening" }
-        let morningAvg = mornings.isEmpty ? 0.0 : Double(mornings.map(\.level).reduce(0, +)) / Double(mornings.count)
-        let eveningAvg = evenings.isEmpty ? 0.0 : Double(evenings.map(\.level).reduce(0, +)) / Double(evenings.count)
-        if morningAvg == 0 && eveningAvg == 0 { return "Not enough data" }
-        if morningAvg >= eveningAvg { return "Morning" }
-        return "Evening"
+    func deleteEnvelope(_ envelope: Envelope) {
+        // remove associated spends
+        let eid = envelope.id
+        let toDelete = spends.filter { $0.envelopeID == eid }
+        toDelete.forEach { container.mainContext.delete($0) }
+        container.mainContext.delete(envelope)
+        try? container.mainContext.save()
+        reload()
     }
 
-    // MARK: Current streak
-    var currentStreak: Int {
-        var streak = 0
-        var checkDate = Calendar.current.startOfDay(for: .now)
-        let daySet = Set(allEntries.map { Calendar.current.startOfDay(for: $0.date) })
-        while daySet.contains(checkDate) {
-            streak += 1
-            checkDate = Calendar.current.date(byAdding: .day, value: -1, to: checkDate)!
+    // MARK: - Spend CRUD
+
+    func logSpend(envelopeID: UUID, amount: Double, note: String) {
+        let s = SpendEntry(envelopeID: envelopeID, amount: amount, note: note)
+        container.mainContext.insert(s)
+        try? container.mainContext.save()
+        reload()
+    }
+
+    func deleteSpend(_ spend: SpendEntry) {
+        container.mainContext.delete(spend)
+        try? container.mainContext.save()
+        reload()
+    }
+
+    // MARK: - Balance helpers
+
+    /// Returns the period start date for the current cycle.
+    private func periodStart(cadence: CadenceType) -> Date {
+        let cal = Calendar.current
+        let now = Date()
+        switch cadence {
+        case .weekly:
+            return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+        case .monthly:
+            return cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
         }
-        return streak
     }
+
+    func currentPeriodStart(for envelope: Envelope) -> Date {
+        let cal = Calendar.current
+        let now = Date()
+        switch envelope.cadence {
+        case .weekly:
+            return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+        case .monthly:
+            return cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
+        }
+    }
+
+    func currentPeriodEnd(for envelope: Envelope) -> Date {
+        let cal = Calendar.current
+        let start = currentPeriodStart(for: envelope)
+        switch envelope.cadence {
+        case .weekly:
+            return cal.date(byAdding: .day, value: 7, to: start) ?? start
+        case .monthly:
+            return cal.date(byAdding: .month, value: 1, to: start) ?? start
+        }
+    }
+
+    func spent(for envelope: Envelope) -> Double {
+        let start = currentPeriodStart(for: envelope)
+        let eid = envelope.id
+        return spends
+            .filter { $0.envelopeID == eid && $0.date >= start }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    func remaining(for envelope: Envelope) -> Double {
+        envelope.allocation - spent(for: envelope)
+    }
+
+    func percentUsed(for envelope: Envelope) -> Double {
+        guard envelope.allocation > 0 else { return 0 }
+        return min(1.0, spent(for: envelope) / envelope.allocation)
+    }
+
+    func spendsForEnvelope(_ envelopeID: UUID) -> [SpendEntry] {
+        let start = envelopes.first(where: { $0.id == envelopeID }).map { currentPeriodStart(for: $0) } ?? Date.distantPast
+        return spends.filter { $0.envelopeID == envelopeID && $0.date >= start }
+            .sorted { $0.date > $1.date }
+    }
+
+    func allSpendsForEnvelope(_ envelopeID: UUID) -> [SpendEntry] {
+        spends.filter { $0.envelopeID == envelopeID }
+            .sorted { $0.date > $1.date }
+    }
+
+    func totalAllocated() -> Double {
+        envelopes.reduce(0) { $0 + $1.allocation }
+    }
+
+    func totalSpent() -> Double {
+        envelopes.reduce(0) { $0 + spent(for: $1) }
+    }
+
+    func totalRemaining() -> Double {
+        totalAllocated() - totalSpent()
+    }
+
+    // MARK: - Delete all
 
     func deleteAllData() {
-        let ctx = container.mainContext
-        try? ctx.delete(model: WaveEntry.self)
-        try? ctx.delete(model: TrendCache.self)
-        try? ctx.save()
+        spends.forEach { container.mainContext.delete($0) }
+        envelopes.forEach { container.mainContext.delete($0) }
+        try? container.mainContext.save()
         reload()
     }
+}
+
+// MARK: - Color tag helpers
+
+extension String {
+    var tagColor: Color {
+        switch self {
+        case "blue": return Color.qmAccent
+        case "green": return Color.qmCorrect
+        case "red": return Color.qmWrong
+        case "orange": return .orange
+        case "purple": return .purple
+        case "teal": return .teal
+        default: return Color.qmAccent
+        }
+    }
+}
+
+let colorTagOptions: [(String, String)] = [
+    ("blue", "Blue"),
+    ("green", "Green"),
+    ("red", "Red"),
+    ("orange", "Orange"),
+    ("purple", "Purple"),
+    ("teal", "Teal")
+]
+
+// MARK: - Currency formatter
+
+let currencyFormatter: NumberFormatter = {
+    let f = NumberFormatter()
+    f.numberStyle = .currency
+    f.maximumFractionDigits = 2
+    return f
+}()
+
+func formatCurrency(_ value: Double) -> String {
+    currencyFormatter.string(from: NSNumber(value: value)) ?? "$\(String(format: "%.2f", value))"
 }
